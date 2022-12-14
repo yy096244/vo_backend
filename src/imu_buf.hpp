@@ -43,7 +43,7 @@ public:
   ImuBuf(double buf_time = 100) : buf_time_(buf_time) {}
   bool insert_imu(const ImuData& imui);
   std::pair<double, double> get_buf_timebound() const;
-  bool get_imus_between(double t1, double t2, std::deque<double>& imu_between);
+  bool get_imus_between(double t1, double t2, std::deque<ImuData>& imu_between);
 private:
   double buf_time_;
   mutable std::mutex mutex_;
@@ -84,16 +84,19 @@ std::pair<double, double> ImuBuf::get_buf_timebound() const {
   return std::make_pair(imus_.front().timestamp, imus_.back().timestamp);
 }
 
-bool ImuBuf::get_imus_between(double t1, double t2, std::deque<double>& imu_between) {
+bool ImuBuf::get_imus_between(double t1, double t2, std::deque<ImuData>& imu_between) {
   std::lock_guard<std::mutex> locker(mutex_);
 
-  if (t1 < imus_.front().timestamp || t2 > imus_.back().timestamp || t1 < t2) {
+  if (t1 < imus_.front().timestamp || t2 >= imus_.back().timestamp || t1 < t2) {
     return false;
   }
 
   // binary search to speedup
-  auto it1_upper = std::upper_bound(imus_.begin(), imus_.end(), t1);
-  auto it2_upper = std::upper_bound(imus_.begin(), imus_.end(), t2);
+  ImuData temp_comp;
+  temp_comp.timestamp = t1;
+  auto it1_upper = std::upper_bound(imus_.begin(), imus_.end(), temp_comp);
+  temp_comp.timestamp = t2;
+  auto it2_upper = std::upper_bound(imus_.begin(), imus_.end(), temp_comp);
 
   imu_between.clear();
 

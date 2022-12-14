@@ -28,7 +28,7 @@ class GyroBiasSolver {
         b_temp = 2 * (q_ij_imu.inverse() * q_ij_vo).vec();
 
         A += A_temp.transpose() * A_temp;
-        b += b_temp.transpose() * b_temp;
+        b += A_temp.transpose() * b_temp;
       }
 
       // solve delta gyro bias
@@ -52,6 +52,7 @@ class ImuVoInitializer {
 public:
   void insert_data(const Eigen::Matrix4d& imu_preint_delta_pose, const Eigen::Matrix4d& vo_delta_pose);
   void reset();
+  // bool get_result();
 private:
   std::vector<Eigen::Matrix4d> imu_preint_delta_poses_;
   std::vector<Eigen::Matrix4d> vo_delta_poses_;
