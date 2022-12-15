@@ -1,0 +1,6 @@
+<launch>
+    <node name="vo_backend" pkg="vo_backend" type="vo_backend" output="screen">
+        <param name="imu_topic" type="string" value="/imu/data" />
+        <param name="vo_topic" type="string" value="/vo/data" />
+    </node>
+</launch>

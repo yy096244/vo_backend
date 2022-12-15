@@ -1,3 +1,5 @@
 build/
 .vscode/
 .cache/
+devel/
+.catkin_workspace
