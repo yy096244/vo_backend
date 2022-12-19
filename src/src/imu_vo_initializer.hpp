@@ -11,21 +11,22 @@ namespace vobackend
 
 // ---------------------------------------------------------------------------------
 class GyroBiasSolver {
-  static bool solve_gyroscope_bias(const std::vector<Eigen::Matrix4d>& imu_pre_delta_rov,
-    const std::vector<Eigen::Matrix4d>& vo_delta_rov, const std::vector<Eigen::Matrix3d>& imu_jacobian_bias,
+public :
+  static bool solve_gyroscope_bias(const std::vector<Eigen::Matrix3d>& imu_pre_delta_rov,
+    const std::vector<Eigen::Matrix3d>& vo_delta_rov, const std::vector<Eigen::Matrix3d>& imu_jacobian_bias,
     Eigen::Vector3d& gyro_bias) {
       Eigen::Matrix3d A = Eigen::Matrix3d::Zero();
       Eigen::Vector3d b = Eigen::Vector3d::Zero();
       Eigen::Vector3d delta_bg;
 
-      // TODO ： imu的角度预积分关于零偏的偏导
+      // TODO ： imu的角度预积分关于零偏的偏导,通过外部的参数传递进来
 
       // the vo robotion to imu and imu rotation should be same
       for (int i = 0; i < imu_pre_delta_rov.size(); i++) {
         Eigen::Matrix3d A_temp = Eigen::Matrix3d::Zero();
         Eigen::Vector3d b_temp = Eigen::Vector3d::Zero();
-        Eigen::Quaterniond q_ij_imu(imu_pre_delta_rov[i].block<3, 3>(0, 0));
-        Eigen::Quaterniond q_ij_vo(vo_delta_rov[i].block<3, 3>(0, 0));
+        Eigen::Quaterniond q_ij_imu(imu_pre_delta_rov[i]);
+        Eigen::Quaterniond q_ij_vo(vo_delta_rov[i]);
         A_temp = imu_jacobian_bias[i];
         b_temp = 2 * (q_ij_imu.inverse() * q_ij_vo).vec();
         A += A_temp.transpose() * A_temp;
@@ -76,6 +77,7 @@ bool ImuVoInitializer::get_result(Eigen::Vector3d &gyro_bias, Eigen::Vector3d &g
   // 1 首先判断是否有足够多的平移(原来的vins中是需要进行关键帧的判断吗)
   // 2 构建线性求解方程(借助于gtsam来进行求解)
   // 3 返回最终的结果
+  return true;
 }
 
 }

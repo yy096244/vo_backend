@@ -9,6 +9,9 @@ set(CMAKE_CXX_FLAGS "-std=c++11")
 # include_directories${CERES_INCLUDE_DIRS})
 # target_link_libraries(${OpenCV_LIBS} ${CERES_LIBRARIES})
 
+find_package(GTSAM REQUIRED)
+include_directories(${GTSAM_INCLUDE_DIR})
+
 find_package(catkin REQUIRED COMPONENTS
   rospy
   roscpp
@@ -18,6 +21,7 @@ find_package(catkin REQUIRED COMPONENTS
   nav_msgs
 )
 
+
 catkin_package()
 include_directories(include ${catkin_INCLUDE_DIRS})
 
@@ -26,4 +30,4 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 
 # find_package(glog)
 add_executable(vo_backend src/main.cpp)
-target_link_libraries(vo_backend ${catkin_LIBRARIES})
+target_link_libraries(vo_backend ${catkin_LIBRARIES} gtsam)
