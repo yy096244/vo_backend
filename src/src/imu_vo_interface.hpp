@@ -1,5 +1,7 @@
 #pragma once
 
+#include <boost/core/checked_delete.hpp>
+#include <deque>
 #include <gtsam/navigation/ImuBias.h>
 #include <gtsam/navigation/PreintegrationBase.h>
 #include <map>
@@ -13,6 +15,7 @@
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/inference/Symbol.h>
+#include <memory>
 
 // config
 // gtsam中相关的内容的集成
@@ -70,6 +73,8 @@ public:
 
         // reset the gtsam imu preint
         pimu_preintegrated_->resetIntegrationAndSetBias(prior_imu_bias_);
+
+        // TODO : 从索引为1开始进行预积分
         for (auto &imui : imus) {
             double dt = imui.timestamp - last_imu_time_;
             last_imu_time_ = imui.timestamp;
@@ -79,6 +84,12 @@ public:
         // push vo pose
         vo_poses_[time] = pose;
 
+        // for initialization, save the original imu data
+        if (!vo_imu_has_aligned_) {
+            imu_datas_.push_back(imus);
+        }
+        
+
         // preintgrate the imus data with gtsam
 
         // try to initilize
@@ -86,7 +97,13 @@ public:
         // optimize slide window
     }
 private:
+    // core data
     std::map<double, Eigen::Matrix4d> vo_poses_;
+    std::vector<std::deque<vobackend::ImuData>> imu_datas_;
+    std::vector<std::shared_ptr<gtsam::PreintegrationType>> pints_;
+
+
+
     // TODO : gtsam : the imus_pre_integrate data between the vo
     // std::shared_ptr<gtsam>
     void try_to_initialize();
@@ -108,6 +125,7 @@ private:
     bool vo_imu_has_aligned_{false};
 
     bool is_imu_vo_aligned_ = false;
+    vobackend::ImuVoInitializer imu_vo_aligner_;
 
     // TODO: set the ex
     Eigen::Matrix4d ex_camera_to_imu_ = Eigen::Matrix4d::Identity();
@@ -156,6 +174,57 @@ void ImuVoInterface::try_to_initialize() {
     }
 
     // 视觉imu的对齐
+    if (!is_imu_vo_aligned_) {
+        // 首先将用于解算陀螺仪零偏的数据用来重新进行预积分(这部分由于更新了陀螺仪的零偏，因此需要重新的进行预积分)
+        if (!imu_datas_.empty()) {
+            double lt = imu_datas_[0][0].timestamp;
+            // check the imu_datas_时间戳与vo_pose的时间戳是一样的
+            for (int i = 0; i < imu_datas_.size(); i++) {
+                Eigen::Matrix4d delta_vo = vo_poses_[i].inverse() * vo_poses_[i+1];
+                Eigen::Matrix4d delta_vo_imu = ex_camera_to_imu_ * delta_vo * ex_camera_to_imu_.inverse();
 
+                std::shared_ptr<gtsam::PreintegrationType> pint(new gtsam::PreintegrationType(*pimu_preintegrated_));
+                pint->resetIntegrationAndSetBias(prior_imu_bias_);
 
+                // TODO : 忽略起始开头的那一帧数据
+                for (int j = 1; j < imu_datas_[i].size(); j++) {
+                    double dt = imu_datas_[i][j].timestamp - lt;
+                    lt = imu_datas_[i][j].timestamp;
+                    pint->integrateMeasurement(imu_datas_[i][j].am, imu_datas_[i][j].wm, dt);
+                }
+
+                // put the data into vo imu align
+                // Eigen::Matrix3d imu_rov = pint->deltaRij().matrix();
+                // Eigen::Vector3d imu_trans = pint->deltaPij();
+                // Eigen::Matrix4d imu_T = Eigen::Matrix4d::Identity();
+                // imu_T.block<3, 3>(0, 0) = imu_rov;
+                // imu_T.block<3, 1>(0, 3) = imu_trans;
+
+                double imu_delta_dt = pint->deltaTij();
+                Eigen::Matrix3d imu_delta_rov = pint->deltaRij().matrix();
+                Eigen::Vector3d imu_delta_p = pint->deltaPij();
+                Eigen::Vector3d imu_delta_v = pint->deltaVij();
+
+                // put the data into imu vo aligner
+                imu_vo_aligner_.insert_data(imu_delta_dt, imu_delta_rov, imu_delta_p, imu_delta_v, delta_vo_imu);
+
+                pints_.push_back(pint);
+            }
+            imu_datas_.clear();
+        } else { // 此时用最新的imu预先积分数据来进行数据的对齐
+            Eigen::Matrix4d delta_vo = vo_poses_[vo_poses_.size()-2].inverse() * vo_poses_[vo_poses_.size()-1];
+            Eigen::Matrix4d delta_vo_imu = ex_camera_to_imu_ * delta_vo * ex_camera_to_imu_.inverse();
+
+            double imu_delta_dt = pimu_preintegrated_->deltaTij();
+            Eigen::Matrix3d imu_delta_rov = pimu_preintegrated_->deltaRij().matrix();
+            Eigen::Vector3d imu_delta_p = pimu_preintegrated_->deltaPij();
+            Eigen::Vector3d imu_delta_v = pimu_preintegrated_->deltaVij();
+            imu_vo_aligner_.insert_data(imu_delta_dt, imu_delta_rov, imu_delta_p, imu_delta_v, delta_vo_imu);
+
+            std::shared_ptr<gtsam::PreintegrationType> pint(new gtsam::PreintegrationType(*pimu_preintegrated_));
+            pints_.push_back(pint);
+        }
+
+        // try to align
+    }
 }
