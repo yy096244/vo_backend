@@ -5,6 +5,7 @@
 #include <gtsam/navigation/ImuBias.h>
 #include <gtsam/navigation/PreintegrationBase.h>
 #include <map>
+#include "Eigen/src/Core/Matrix.h"
 #include "imu_buf.hpp"
 #include "imu_vo_initializer.hpp"
 
@@ -88,14 +89,23 @@ public:
         if (!vo_imu_has_aligned_) {
             imu_datas_.push_back(imus);
         }
-        
 
         // preintgrate the imus data with gtsam
+        // sliding window optimize
+
 
         // try to initilize
 
         // optimize slide window
     }
+
+    // 获取vo的一个整体的旋转以及整体的尺度，对整个单目vo的前端来进行设置
+    bool get_vo_imu_align(Eigen::Matrix4d& delta_mat, double& scale) {
+        return true;
+    }
+
+
+
 private:
     // core data
     std::map<double, Eigen::Matrix4d> vo_poses_;
@@ -226,5 +236,44 @@ void ImuVoInterface::try_to_initialize() {
         }
 
         // try to align
+        Eigen::Vector3d gravity_direction;
+        double scale;
+        std::vector<Eigen::Vector3d> vs;
+        bool align_ok = imu_vo_aligner_.try_to_align(gravity_direction, scale, vs);
+
+        // vo imu align(视觉惯性的对齐的逻辑)
+        if (align_ok) {
+            // 1 根据重力的方向以及对应的尺度对整个vo进行调整(需要根据整个ex来进行调整)
+            // 首先计算得到第一帧imu相对重力坐标系下的pose
+            // 根据第一帧imu的pose以及对应的外参得到第一帧camera的(旋转，平移)
+            // 对所有的位姿的pose来进行变换
+
+
+            {
+
+
+
+
+            }
+
+            // 2 将用于初始化过程中的imu以及vo的pose用来进行构建预积分的约束
+            // 对所有的imu根据估计的零偏进行重新的预积分
+            // graph中构建预积分的约束
+
+            // 3 设置对应的标志位
+            is_imu_vo_aligned_ = true;
+        }
     }
+}
+
+void ImuVoInterface::optimize() {
+    if (!gyro_bias_has_solved_ || !is_imu_vo_aligned_) {
+        return;
+    }
+
+    // add the current imu_preint to graph
+
+
+    // sliding window
+
 }

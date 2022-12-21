@@ -31,3 +31,6 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 # find_package(glog)
 add_executable(vo_backend src/main.cpp)
 target_link_libraries(vo_backend ${catkin_LIBRARIES} gtsam)
+
+add_executable(test_eigen_2vector test/test_from_2_vector.cpp)
+target_link_libraries(test_eigen_2vector ${catkin_LIBRARIES} gtsam)
