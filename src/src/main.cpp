@@ -2,6 +2,7 @@
 #include <map>
 #include "imu_buf.hpp"
 #include "imu_vo_initializer.hpp"
+#include "imu_vo_interface.hpp"
 #include "ros/node_handle.h"
 // #include <glog/logging.h>
 #include <mutex>
