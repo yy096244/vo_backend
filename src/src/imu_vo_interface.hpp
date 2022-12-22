@@ -6,6 +6,7 @@
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/navigation/ImuBias.h>
+#include <gtsam/navigation/NavState.h>
 #include <gtsam/navigation/PreintegrationBase.h>
 #include <gtsam/nonlinear/Values.h>
 #include <map>
@@ -175,8 +176,14 @@ private:
     double vo_scale_;
 
     // for gtsam_optimization
-    std::shared_ptr<gtsam::NonlinearFactorGraph> graph_{nullptr};
+    gtsam::NonlinearFactorGraph::shared_ptr graph_{nullptr};
     gtsam::Values initial_values_;
+    gtsam::Values result_;
+    int gtsam_state_index_{0};
+
+    // for sliding window
+    const int sliding_window_size_ = 10;
+    int cur_start_window_index_ = 0;
 };
 
 
@@ -348,7 +355,6 @@ void ImuVoInterface::try_to_initialize() {
             }
 
             // 构建预积分的约束并进行优化
-            gtsam::Values result;
             {
                 // 设置第一帧对应的pose
                 gtsam::noiseModel::Diagonal::shared_ptr first_pose_noise_model 
@@ -367,37 +373,39 @@ void ImuVoInterface::try_to_initialize() {
                 gtsam::imuBias::ConstantBias prior_imu_bias = prior_imu_bias_;
 
                 // 将第一帧的pose添加到graph中
-                graph_->add(gtsam::PriorFactor<gtsam::Pose3>(X(0), first_pose, pose_noise_model));
-                graph_->add(gtsam::PriorFactor<gtsam::Vector3>(V(0), prior_velocity, velocity_noise_model));
-                graph_->add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(0), prior_imu_bias_,bias_noise_model));
+                graph_->add(gtsam::PriorFactor<gtsam::Pose3>(X(gtsam_state_index_), first_pose, pose_noise_model));
+                graph_->add(gtsam::PriorFactor<gtsam::Vector3>(V(gtsam_state_index_), prior_velocity, velocity_noise_model));
+                graph_->add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(gtsam_state_index_), prior_imu_bias_,bias_noise_model));
 
-                initial_values_.insert(X(0), first_pose);
-                initial_values_.insert(V(0), prior_velocity);
-                initial_values_.insert(B(0), prior_imu_bias_);
+                initial_values_.insert(X(gtsam_state_index_), first_pose);
+                initial_values_.insert(V(gtsam_state_index_), prior_velocity);
+                initial_values_.insert(B(gtsam_state_index_), prior_imu_bias_);
 
                 for (int i = 0; i < pints.size(); i++) {
+                    gtsam_state_index_++;
                     // 添加每帧的起始量以及对应的初始值
                     gtsam::Pose3 posei = mat2pos3(vo_align_scale[i]);
                     gtsam::Vector3 velocityi(vs[i]);
-                    graph_->add(gtsam::PriorFactor<gtsam::Pose3>(X(i), posei, first_pose_noise_model));
-                    graph_->add(gtsam::PriorFactor<gtsam::Vector3>(V(i), velocityi, velocity_noise_model));
-                    graph_->add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(i), prior_imu_bias_,bias_noise_model));
+                    graph_->add(gtsam::PriorFactor<gtsam::Pose3>(X(gtsam_state_index_), posei, first_pose_noise_model));
+                    graph_->add(gtsam::PriorFactor<gtsam::Vector3>(V(gtsam_state_index_), velocityi, velocity_noise_model));
+                    graph_->add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(gtsam_state_index_), prior_imu_bias_,bias_noise_model));
 
-                    initial_values_.insert(X(i), posei);
-                    initial_values_.insert(V(i), velocityi);
-                    initial_values_.insert(B(i), prior_imu_bias_);
+                    initial_values_.insert(X(gtsam_state_index_), posei);
+                    initial_values_.insert(V(gtsam_state_index_), velocityi);
+                    initial_values_.insert(B(gtsam_state_index_), prior_imu_bias_);
 
                     // add imu factor
                     gtsam::PreintegratedCombinedMeasurements *preint_imu_combined = dynamic_cast<gtsam::PreintegratedCombinedMeasurements*>(pints[i].get());
-                    gtsam::CombinedImuFactor imu_factor(X(i-1), V(i-1),
-                        X(i  ), V(i  ),
-                        B(i-1), B(i ),
+                    gtsam::CombinedImuFactor imu_factor(X(gtsam_state_index_-1), V(gtsam_state_index_-1),
+                        X(gtsam_state_index_  ), V(gtsam_state_index_  ),
+                        B(gtsam_state_index_-1), B(gtsam_state_index_ ),
                         *preint_imu_combined);
                     graph_->add(imu_factor);
 
                     // optimize
                     gtsam::LevenbergMarquardtOptimizer optimizer(*graph_, initial_values_);
-                    result = optimizer.optimize();
+                    result_ = optimizer.optimize();
+                    prior_imu_bias_ = result_.at<gtsam::imuBias::ConstantBias>(B(gtsam_state_index_));
                 }
             }
 
@@ -417,8 +425,48 @@ void ImuVoInterface::optimize() {
     // add the current imu_preint to graph
     // 1 根据最新的pose以及传入的相对误差预测当前最新的pose
         // 或者根据当前的imu的预积分得到当前的最新的预测的pose
-    
-    // 2 添加最新的factor
+    gtsam::NavState last_imu_state = 
+        gtsam::NavState(result_.at<gtsam::Pose3>(X(gtsam_state_index_)),
+        result_.at<gtsam::Vector3>(V(gtsam_state_index_)));
+    gtsam::NavState cur_state = pimu_preintegrated_->predict(last_imu_state, prior_imu_bias_);
 
-    // TODO: sliding window
+
+
+    // 2 添加最新的factor
+    // 添加vo的先验的误差
+    gtsam_state_index_++;
+    gtsam::Pose3 cur_vo_pose = mat2pos3(vo_poses_.rbegin()->second * ex_camera_to_imu_.inverse());
+    gtsam::noiseModel::Diagonal::shared_ptr pose_noise_model 
+        = gtsam::noiseModel::Diagonal::Sigmas((gtsam::Vector(6) 
+        << 0.01, 0.01, 0.01, 0.05, 0.05, 0.05).finished()); // rad,rad,rad,m, m, m
+    graph_->add(gtsam::PriorFactor<gtsam::Pose3>(X(gtsam_state_index_), cur_vo_pose, pose_noise_model));
+
+    // 添加imu的预积分的误差
+    gtsam::PreintegratedCombinedMeasurements *preint_imu_combined = dynamic_cast<gtsam::PreintegratedCombinedMeasurements*>(pimu_preintegrated_);
+    gtsam::CombinedImuFactor imu_factor(X(gtsam_state_index_-1), V(gtsam_state_index_-1),
+        X(gtsam_state_index_  ), V(gtsam_state_index_  ),
+        B(gtsam_state_index_-1), B(gtsam_state_index_ ),
+        *preint_imu_combined);
+    graph_->add(imu_factor);
+
+    // 添加优化的起始值
+    initial_values_.insert(X(gtsam_state_index_), cur_state.pose());
+    initial_values_.insert(V(gtsam_state_index_), cur_state.v());
+    initial_values_.insert(B(gtsam_state_index_), prior_imu_bias_);
+
+    // 3 optimize and sliding window
+    gtsam::LevenbergMarquardtOptimizer optimizer(*graph_, initial_values_);
+    result_ = optimizer.optimize();
+    prior_imu_bias_ = result_.at<gtsam::imuBias::ConstantBias>(B(gtsam_state_index_));
+
+    gtsam::FastVector<gtsam::Key> keys_to_marginalize;
+    while (gtsam_state_index_ - cur_start_window_index_ > sliding_window_size_) {
+        keys_to_marginalize.push_back(X(cur_start_window_index_));
+        keys_to_marginalize.push_back(V(cur_start_window_index_));
+        keys_to_marginalize.push_back(B(cur_start_window_index_));
+        cur_start_window_index_++;
+    }
+
+    graph_ = dmvio::marginalizeOut(*graph_, initial_values_, 
+        keys_to_marginalize, [&](const gtsam::FastSet<gtsam::Key>&){}, true);
 }
