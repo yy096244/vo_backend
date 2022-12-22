@@ -9,7 +9,6 @@
 #include <gtsam/navigation/PreintegrationBase.h>
 #include <gtsam/nonlinear/Values.h>
 #include <map>
-#include "Eigen/src/Core/Matrix.h"
 #include "imu_buf.hpp"
 #include "imu_vo_initializer.hpp"
 
@@ -21,6 +20,9 @@
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/inference/Symbol.h>
 #include <memory>
+
+// copy from dmvio for marginlization for sliding window optimize
+#include "Marginalization.h"
 
 // config
 // gtsam中相关的内容的集成
@@ -96,13 +98,11 @@ public:
             imu_datas_.push_back(imus);
         }
 
-        // preintgrate the imus data with gtsam
-        // sliding window optimize
-
-
         // try to initilize
+        try_to_initialize();
 
         // optimize slide window
+        optimize();
     }
 
     // 获取vo的一个整体的旋转以及整体的尺度，对整个单目vo的前端来进行设置
@@ -415,6 +415,10 @@ void ImuVoInterface::optimize() {
     }
 
     // add the current imu_preint to graph
+    // 1 根据最新的pose以及传入的相对误差预测当前最新的pose
+        // 或者根据当前的imu的预积分得到当前的最新的预测的pose
+    
+    // 2 添加最新的factor
 
     // TODO: sliding window
 }

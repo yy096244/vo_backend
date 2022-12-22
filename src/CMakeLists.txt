@@ -12,6 +12,8 @@ set(CMAKE_CXX_FLAGS "-std=c++11")
 find_package(GTSAM REQUIRED)
 include_directories(${GTSAM_INCLUDE_DIR})
 
+include_directories(src/marginlization)
+
 find_package(catkin REQUIRED COMPONENTS
   rospy
   roscpp
@@ -21,7 +23,6 @@ find_package(catkin REQUIRED COMPONENTS
   nav_msgs
 )
 
-
 catkin_package()
 include_directories(include ${catkin_INCLUDE_DIRS})
 
@@ -29,7 +30,7 @@ find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
 # find_package(glog)
-add_executable(vo_backend src/main.cpp)
+add_executable(vo_backend src/main.cpp src/marginlization/GTSAMUtils.cpp src/marginlization/Marginalization.cpp)
 target_link_libraries(vo_backend ${catkin_LIBRARIES} gtsam)
 
 add_executable(test_eigen_2vector test/test_from_2_vector.cpp)
