@@ -3,7 +3,6 @@
 #include "imu_buf.hpp"
 #include "imu_vo_initializer.hpp"
 #include "imu_vo_interface.hpp"
-#include "ros/node_handle.h"
 // #include <glog/logging.h>
 #include <mutex>
 #include <condition_variable>
@@ -59,10 +58,12 @@ void imu_callback(const sensor_msgs::ImuConstPtr& pimu) {
 void vopose_callback(const geometry_msgs::PoseWithCovarianceStampedConstPtr& pvopose) {
     mutex_buf.lock();
     if (pvopose->header.stamp.toSec() < imu_buf.get_buf_timebound().first) {
+        mutex_buf.unlock();
         return;
     }
     if (!vo_pose_buf.empty()) {
         if (pvopose->header.stamp.toSec() <= vo_pose_buf.rbegin()->first) {
+            mutex_buf.unlock();
             return;
         }
     }

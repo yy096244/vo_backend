@@ -58,3 +58,5 @@ rosbag play airground_rig_s3_2013-03-18_21-38-48.bag
 3. 崩溃问题的解决
 将march相关的选项关掉
 ### 运行realsense d435i
+1. 安装realsense的驱动，并且启动realsense相机
+2. 添加realsense的svo的配置
